@@ -212,9 +212,9 @@ start_and_update_instance() {
 }
 
 # Start and update all instances
-start_and_update_instance "$MASTER_INSTANCE_ID" "Master Node" "MASTER_IP"
-start_and_update_instance "$WORKER1_INSTANCE_ID" "Worker Node 1" "WORKER1_IP"
-start_and_update_instance "$WORKER2_INSTANCE_ID" "Worker Node 2" "WORKER2_IP"
+start_and_update_instance "$MASTER_INSTANCE_ID" "Master Node" "MASTER_PUBLIC_IP"
+start_and_update_instance "$WORKER1_INSTANCE_ID" "Worker Node 1" "WORKER1_PUBLIC_IP"
+start_and_update_instance "$WORKER2_INSTANCE_ID" "Worker Node 2" "WORKER2_PUBLIC_IP"
 
 if [ $INSTANCES_STARTED -eq 0 ] && [ $INSTANCES_UPDATED -eq 0 ]; then
     print_info "No EC2 instances found to start or update"
@@ -267,4 +267,4 @@ echo -e "  ${CYAN}source deployment-info.txt${NC}"
 echo -e "  ${CYAN}# or${NC}"
 echo -e "  ${CYAN}source restore-vars.sh${NC}"
 echo ""
-```
+

@@ -7,6 +7,7 @@
 # - Security group
 # - IAM role and instance profile
 # - SSH key pair (from AWS, keeps local file)
+# - ECR repositories (added in Chat 3)
 ################################################################################
 
 # Colors
@@ -49,6 +50,15 @@ fi
 # Load variables
 source deployment-info.txt
 
+# ECR repositories to delete
+ECR_REPOSITORIES=(
+    "retail-store-ui"
+    "retail-store-catalog"
+    "retail-store-cart"
+    "retail-store-orders"
+    "retail-store-checkout"
+)
+
 # Warning message
 echo -e "${RED}"
 echo "╔═══════════════════════════════════════════════════════╗"
@@ -62,6 +72,7 @@ echo "║  • Security Group: ${SECURITY_GROUP_NAME}                    ║"
 echo "║  • IAM Role: ${IAM_ROLE_NAME}              ║"
 echo "║  • IAM Instance Profile: ${IAM_INSTANCE_PROFILE_NAME}     ║"
 echo "║  • SSH Key Pair from AWS                             ║"
+echo "║  • 5 ECR Repositories (and all images)               ║"
 echo "║                                                       ║"
 echo "║  Instance IDs:                                       ║"
 echo "║    - Master:  ${MASTER_INSTANCE_ID}           ║"
@@ -203,8 +214,35 @@ else
     print_warning "Key pair not found in AWS or already deleted"
 fi
 
+# Delete ECR repositories
+print_header "Step 6: Deleting ECR Repositories"
+
+ECR_DELETED=0
+for REPO_NAME in "${ECR_REPOSITORIES[@]}"; do
+    if aws ecr describe-repositories --repository-names "${REPO_NAME}" --region ${REGION} &> /dev/null; then
+        print_info "Deleting ECR repository: ${REPO_NAME}"
+        
+        # Force delete (removes all images)
+        aws ecr delete-repository \
+            --repository-name "${REPO_NAME}" \
+            --region ${REGION} \
+            --force > /dev/null
+        
+        print_success "Deleted: ${REPO_NAME}"
+        ECR_DELETED=$((ECR_DELETED + 1))
+    else
+        print_info "Repository not found: ${REPO_NAME}"
+    fi
+done
+
+if [ $ECR_DELETED -gt 0 ]; then
+    print_success "Deleted ${ECR_DELETED} ECR repositories"
+else
+    print_warning "No ECR repositories found to delete"
+fi
+
 # Clean up local files
-print_header "Step 6: Cleaning Up Local Files"
+print_header "Step 7: Cleaning Up Local Files"
 
 echo -e "${YELLOW}Do you want to delete local files? (deployment-info.txt, SSH key, etc.)${NC}"
 echo -n "Type 'yes' to delete local files, or press Enter to keep them: "
@@ -253,6 +291,13 @@ echo "  • IAM Role: ${IAM_ROLE_NAME}"
 echo "  • IAM Instance Profile: ${IAM_INSTANCE_PROFILE_NAME}"
 echo "  • SSH Key Pair (from AWS): ${KEY_NAME}"
 
+if [ $ECR_DELETED -gt 0 ]; then
+    echo "  • ECR Repositories (${ECR_DELETED}):"
+    for REPO_NAME in "${ECR_REPOSITORIES[@]}"; do
+        echo "    - ${REPO_NAME}"
+    done
+fi
+
 if [ "$delete_local" = "yes" ]; then
     echo ""
     echo -e "${GREEN}✓ Local files deleted${NC}"
@@ -280,4 +325,6 @@ echo -e "${GREEN}║       Cleanup Completed Successfully!         ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════╝${NC}\n"
 
 echo -e "${BLUE}To recreate the infrastructure, run:${NC}"
-echo -e "  ${YELLOW}./scripts/01-infrastructure.sh${NC}\n"
+echo -e "  ${YELLOW}./01-infrastructure.sh${NC}"
+echo -e "  ${YELLOW}./02-k8s-init.sh${NC}"
+echo -e "  ${YELLOW}./03-ecr-setup.sh${NC}\n"
