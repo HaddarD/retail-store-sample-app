@@ -487,6 +487,7 @@ EOF
         MASTER_INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ${AMI_ID} \
             --instance-type ${INSTANCE_TYPE} \
+            --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=20,VolumeType=gp3}" \
             --key-name ${KEY_NAME} \
             --security-group-ids ${SECURITY_GROUP_ID} \
             --iam-instance-profile "Name=${IAM_INSTANCE_PROFILE_NAME}" \
@@ -565,6 +566,7 @@ EOF
             WORKER_INSTANCE_ID=$(aws ec2 run-instances \
                 --image-id ${AMI_ID} \
                 --instance-type ${INSTANCE_TYPE} \
+                --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=20,VolumeType=gp3}" \
                 --key-name ${KEY_NAME} \
                 --security-group-ids ${SECURITY_GROUP_ID} \
                 --iam-instance-profile "Name=${IAM_INSTANCE_PROFILE_NAME}" \

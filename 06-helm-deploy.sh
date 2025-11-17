@@ -269,6 +269,7 @@ install_rabbitmq() {
         --set auth.username=guest \
         --set auth.password=guest \
         --set persistence.enabled=false \
+        --set image.tag=3.13-management \
         --wait \
         --timeout 20m; then
         print_success "RabbitMQ installed"

@@ -272,7 +272,10 @@ echo -e "${GREEN}╚════════════════════
 
 echo -e "${YELLOW}To load variables into your current terminal:${NC}"
 echo -e "  ${CYAN}source deployment-info.txt${NC}"
-echo -e "  ${CYAN}# or${NC}"
+echo -e "  ${CYAN}or${NC}"
 echo -e "  ${CYAN}source restore-vars.sh${NC}"
+echo -e "${YELLOW}To use kubectl:${NC}"
+echo -e "  ${CYAN}kubectl config set-cluster kubernetes --insecure-skip-tls-verify=true${NC}"
+echo -e "  ${CYAN}kubectl get nodes${NC}"
 echo ""
 
