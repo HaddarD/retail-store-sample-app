@@ -8,14 +8,37 @@ on:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
   GITOPS_REPO: retail-store-gitops
 
 jobs:
+  # Job to detect which services changed
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.set-all.outputs.ui }}
+      catalog: ${{ steps.set-all.outputs.catalog }}
+      cart: ${{ steps.set-all.outputs.cart }}
+      orders: ${{ steps.set-all.outputs.orders }}
+      checkout: ${{ steps.set-all.outputs.checkout }}
+    steps:
+      - name: Build all services on every push
+        id: set-all
+        run: |
+          echo "Building ALL services (project requirement)"
+          echo "ui=true" >> $GITHUB_OUTPUT
+          echo "catalog=true" >> $GITHUB_OUTPUT
+          echo "cart=true" >> $GITHUB_OUTPUT
+          echo "orders=true" >> $GITHUB_OUTPUT
+          echo "checkout=true" >> $GITHUB_OUTPUT
+
+  # Build UI service
   build-ui:
+    name: Build UI Service
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.build.outputs.image_tag }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ui == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,29 +48,36 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push UI image
-        id: build
+      - name: Build, tag, and push UI image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: retail-store-ui
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          echo "Building UI service..."
           cd src/ui
-          docker build -t $ECR_REGISTRY/retail-store-ui:$IMAGE_TAG .
-          docker build -t $ECR_REGISTRY/retail-store-ui:latest .
-          docker push $ECR_REGISTRY/retail-store-ui:$IMAGE_TAG
-          docker push $ECR_REGISTRY/retail-store-ui:latest
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing UI image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "✓ UI image pushed successfully"
+          echo "  Repository: $ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "  Tags: $IMAGE_TAG, latest"
 
+  # Build Catalog service
   build-catalog:
+    name: Build Catalog Service
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.build.outputs.image_tag }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.catalog == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,21 +87,214 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push Catalog image
-        id: build
+      - name: Build, tag, and push Catalog image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: retail-store-catalog
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          echo "Building Catalog service..."
           cd src/catalog
-          docker build -t $ECR_REGISTRY/retail-store-catalog:$IMAGE_TAG .
-          docker build -t $ECR_REGISTRY/retail-store-catalog:latest .
-          docker push $ECR_REGISTRY/retail-store-catalog:$IMAGE_TAG
-          docker push $ECR_REGISTRY/retail-store-catalog:latest
-          ech
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing Catalog image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "✓ Catalog image pushed successfully"
+          echo "  Repository: $ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "  Tags: $IMAGE_TAG, latest"
+
+  # Build Cart service
+  build-cart:
+    name: Build Cart Service
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cart == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Cart image
+        env:
+          ECR_REPOSITORY: retail-store-cart
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building Cart service..."
+          cd src/cart
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing Cart image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "✓ Cart image pushed successfully"
+          echo "  Repository: $ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "  Tags: $IMAGE_TAG, latest"
+
+  # Build Orders service
+  build-orders:
+    name: Build Orders Service
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.orders == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Orders image
+        env:
+          ECR_REPOSITORY: retail-store-orders
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building Orders service..."
+          cd src/orders
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing Orders image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "✓ Orders image pushed successfully"
+          echo "  Repository: $ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "  Tags: $IMAGE_TAG, latest"
+
+  # Build Checkout service
+  build-checkout:
+    name: Build Checkout Service
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.checkout == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Checkout image
+        env:
+          ECR_REPOSITORY: retail-store-checkout
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building Checkout service..."
+          cd src/checkout
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Pushing Checkout image to ECR..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "✓ Checkout image pushed successfully"
+          echo "  Repository: $ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "  Tags: $IMAGE_TAG, latest"
+
+  # NEW: Update GitOps repository with new image tags
+  update-gitops:
+    name: Update GitOps Repository
+    runs-on: ubuntu-latest
+    needs: [build-ui, build-catalog, build-cart, build-orders, build-checkout]
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_PAT }}
+          path: gitops
+
+      - name: Update all image tags
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd gitops
+          echo "Updating image tags to: $IMAGE_TAG"
+          
+          # Update each service values.yaml
+          sed -i "s|^  tag:.*|  tag: \"$IMAGE_TAG\"|" apps/ui/values.yaml
+          sed -i "s|^  tag:.*|  tag: \"$IMAGE_TAG\"|" apps/catalog/values.yaml
+          sed -i "s|^  tag:.*|  tag: \"$IMAGE_TAG\"|" apps/cart/values.yaml
+          sed -i "s|^  tag:.*|  tag: \"$IMAGE_TAG\"|" apps/orders/values.yaml
+          sed -i "s|^  tag:.*|  tag: \"$IMAGE_TAG\"|" apps/checkout/values.yaml
+          
+          echo "✓ All image tags updated"
+
+      - name: Commit and push changes
+        run: |
+          cd gitops
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Update image tags to ${{ github.sha }}"
+          git push
+          
+          echo "✓ Changes pushed to GitOps repository"
+
+  # Summary job
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-ui, build-catalog, build-cart, build-orders, build-checkout, update-gitops]
+    if: always()
+    steps:
+      - name: Print build summary
+        run: |
+          echo "=========================================="
+          echo "Build Summary"
+          echo "=========================================="
+          echo ""
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo ""
+          echo "Services built:"
+          echo "  UI:       ${{ needs.detect-changes.outputs.ui }}"
+          echo "  Catalog:  ${{ needs.detect-changes.outputs.catalog }}"
+          echo "  Cart:     ${{ needs.detect-changes.outputs.cart }}"
+          echo "  Orders:   ${{ needs.detect-changes.outputs.orders }}"
+          echo "  Checkout: ${{ needs.detect-changes.outputs.checkout }}"
+          echo ""
+          echo "GitOps Update: ${{ needs.update-gitops.result }}"
+          echo ""
+          echo "All images tagged with:"
+          echo "  - ${{ github.sha }}"
+          echo "  - latest"
+          echo ""
+          echo "=========================================="
