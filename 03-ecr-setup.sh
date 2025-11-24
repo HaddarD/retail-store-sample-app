@@ -178,19 +178,31 @@ EOF
     
     print_info "Creating new imagePullSecret 'regcred'..."
     
-# Create the secret on the cluster
-    ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
-        kubectl create namespace retail-store 2>/dev/null || true
-        kubectl delete secret regcred -n retail-store 2>/dev/null || true
-        kubectl create secret docker-registry regcred \
-            --namespace retail-store \
-            --docker-server=${ECR_REGISTRY} \
-            --docker-username=AWS \
-            --docker-password='${ECR_PASSWORD}' \
-            --docker-email=none@example.com
+# Create the secret in default namespace
+ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
+    kubectl create secret docker-registry regcred \
+        --docker-server=${ECR_REGISTRY} \
+        --docker-username=AWS \
+        --docker-password='${ECR_PASSWORD}' \
+        --docker-email=none@example.com
 EOF
-    
-    print_success "imagePullSecret 'regcred' created successfully"
+
+print_success "imagePullSecret 'regcred' created in default namespace"
+
+# Create the secret in retail-store namespace (for ArgoCD deployments)
+print_info "Creating imagePullSecret in retail-store namespace..."
+ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
+    kubectl create namespace retail-store 2>/dev/null || true
+    kubectl delete secret regcred -n retail-store 2>/dev/null || true
+    kubectl create secret docker-registry regcred \
+        --namespace=retail-store \
+        --docker-server=${ECR_REGISTRY} \
+        --docker-username=AWS \
+        --docker-password='${ECR_PASSWORD}' \
+        --docker-email=none@example.com
+EOF
+
+print_success "imagePullSecret 'regcred' created in retail-store namespace"
     
     # Verify secret creation
     print_info "Verifying secret..."

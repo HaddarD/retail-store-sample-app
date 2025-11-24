@@ -263,8 +263,24 @@ if [ -f ~/.kube/config-retail-store ]; then
     echo "Updating kubeconfig with new master IP..."
     scp -o StrictHostKeyChecking=no -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP:~/.kube/config ~/.kube/config-retail-store 2>/dev/null
     sed -i "s|server: https://.*:6443|server: https://${MASTER_PUBLIC_IP}:6443|g" ~/.kube/config-retail-store
+    # Set TLS skip (add this line)
+    kubectl --kubeconfig=~/.kube/config-retail-store config set-cluster kubernetes --insecure-skip-tls-verify=true 2>/dev/null
     echo "✓ Kubeconfig updated"
 fi
+
+# Update ArgoCD URL with new master IP
+if grep -q "^export ARGOCD_URL=" "$DEPLOYMENT_INFO"; then
+    sed -i "s|^export ARGOCD_URL=.*|export ARGOCD_URL=\"https://${MASTER_PUBLIC_IP}:30090\"|" "$DEPLOYMENT_INFO"
+    print_success "ArgoCD URL updated: https://${MASTER_PUBLIC_IP}:30090"
+fi
+
+# Update App URL for easy reference
+if grep -q "^export APP_URL=" "$DEPLOYMENT_INFO"; then
+    sed -i "s|^export APP_URL=.*|export APP_URL=\"http://${MASTER_PUBLIC_IP}:30080\"|" "$DEPLOYMENT_INFO"
+else
+    echo "export APP_URL=\"http://${MASTER_PUBLIC_IP}:30080\"" >> "$DEPLOYMENT_INFO"
+fi
+print_success "App URL updated: http://${MASTER_PUBLIC_IP}:30080"
 
 echo -e "${GREEN}╔════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║   Startup Complete!                           ║${NC}"
