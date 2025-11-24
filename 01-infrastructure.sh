@@ -253,6 +253,23 @@ create_security_group() {
             --region ${REGION} > /dev/null
         print_info "  ✓ Weave Net UDP (6783-6784)"
         
+        # Calico BGP (if using Calico CNI)
+        aws ec2 authorize-security-group-ingress \
+            --group-id ${SECURITY_GROUP_ID} \
+            --protocol tcp \
+            --port 179 \
+            --source-group ${SECURITY_GROUP_ID} \
+            --region ${REGION} > /dev/null
+        print_info "  ✓ Calico BGP (179/TCP)"
+
+        # Calico IP-in-IP
+        aws ec2 authorize-security-group-ingress \
+            --group-id ${SECURITY_GROUP_ID} \
+            --protocol 4 \
+            --source-group ${SECURITY_GROUP_ID} \
+            --region ${REGION} > /dev/null
+        print_info "  ✓ Calico IP-in-IP (Protocol 4)"
+
         # HTTP/HTTPS for application access
         aws ec2 authorize-security-group-ingress \
             --group-id ${SECURITY_GROUP_ID} \
