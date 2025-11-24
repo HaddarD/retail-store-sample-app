@@ -157,8 +157,17 @@ create_namespace() {
 
     if kubectl get namespace ${NAMESPACE} &> /dev/null; then
         print_warning "Namespace already exists: ${NAMESPACE}"
+        # Add Helm labels to existing namespace
+        kubectl label namespace ${NAMESPACE} app.kubernetes.io/managed-by=Helm --overwrite 2>/dev/null
+        kubectl annotate namespace ${NAMESPACE} meta.helm.sh/release-name=retail-store --overwrite 2>/dev/null
+        kubectl annotate namespace ${NAMESPACE} meta.helm.sh/release-namespace=retail-store --overwrite 2>/dev/null
+        print_info "Helm labels added to namespace"
     else
         kubectl create namespace ${NAMESPACE}
+        # Add Helm labels to new namespace
+        kubectl label namespace ${NAMESPACE} app.kubernetes.io/managed-by=Helm
+        kubectl annotate namespace ${NAMESPACE} meta.helm.sh/release-name=retail-store
+        kubectl annotate namespace ${NAMESPACE} meta.helm.sh/release-namespace=retail-store
         print_success "Namespace created: ${NAMESPACE}"
     fi
 }
@@ -247,7 +256,7 @@ install_redis() {
 install_rabbitmq() {
     print_header "Installing RabbitMQ (for Checkout)"
 
-    RABBITMQ_RUNNING=$(kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=rabbitmq --no-headers 2>/dev/null | grep "Running" | wc -l)
+    RABBITMQ_RUNNING=$(kubectl get pods -n ${NAMESPACE} -l app=rabbitmq --no-headers 2>/dev/null | grep "Running" | wc -l)
     RABBITMQ_RUNNING=${RABBITMQ_RUNNING:-0}
 
     if [ "$RABBITMQ_RUNNING" -gt 0 ]; then
@@ -255,27 +264,77 @@ install_rabbitmq() {
         return
     fi
 
+    # Clean up any failed Bitnami installation
     if helm list -n ${NAMESPACE} 2>/dev/null | grep -q "^rabbitmq"; then
-        print_warning "RabbitMQ release exists but not running"
-        print_info "Cleaning up..."
+        print_info "Cleaning up old Helm release..."
         helm uninstall rabbitmq -n ${NAMESPACE} 2>/dev/null || true
         sleep 10
     fi
 
-    print_info "Installing RabbitMQ (5-20 minutes)..."
+    # Clean up any existing deployment
+    kubectl delete deployment rabbitmq -n ${NAMESPACE} 2>/dev/null || true
+    kubectl delete service rabbitmq -n ${NAMESPACE} 2>/dev/null || true
+    sleep 5
 
-    if helm install rabbitmq bitnami/rabbitmq \
-        --namespace ${NAMESPACE} \
-        --set auth.username=guest \
-        --set auth.password=guest \
-        --set persistence.enabled=false \
-        --set image.tag=3.13-management \
-        --wait \
-        --timeout 20m; then
+    print_info "Installing RabbitMQ (2-5 minutes)..."
+
+    # Deploy RabbitMQ using official image
+    kubectl apply -n ${NAMESPACE} -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.13-management
+        ports:
+        - containerPort: 5672
+          name: amqp
+        - containerPort: 15672
+          name: management
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          value: "guest"
+        - name: RABBITMQ_DEFAULT_PASS
+          value: "guest"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+  - port: 5672
+    targetPort: 5672
+    name: amqp
+  - port: 15672
+    targetPort: 15672
+    name: management
+EOF
+
+    # Wait for RabbitMQ to be ready
+    print_info "Waiting for RabbitMQ to start..."
+    kubectl wait --for=condition=available --timeout=300s deployment/rabbitmq -n ${NAMESPACE}
+
+    if [ $? -eq 0 ]; then
         print_success "RabbitMQ installed"
     else
         print_error "RabbitMQ installation failed"
-        kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=rabbitmq
+        kubectl get pods -n ${NAMESPACE} -l app=rabbitmq
         exit 1
     fi
 }

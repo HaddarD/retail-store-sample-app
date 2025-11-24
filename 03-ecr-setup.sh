@@ -178,9 +178,12 @@ EOF
     
     print_info "Creating new imagePullSecret 'regcred'..."
     
-    # Create the secret on the cluster
+# Create the secret on the cluster
     ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
+        kubectl create namespace retail-store 2>/dev/null || true
+        kubectl delete secret regcred -n retail-store 2>/dev/null || true
         kubectl create secret docker-registry regcred \
+            --namespace retail-store \
             --docker-server=${ECR_REGISTRY} \
             --docker-username=AWS \
             --docker-password='${ECR_PASSWORD}' \
