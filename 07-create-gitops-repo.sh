@@ -973,6 +973,7 @@ spec:
                 - check_running
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 10
 ---
 apiVersion: v1
 kind: Service
