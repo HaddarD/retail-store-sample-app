@@ -259,13 +259,17 @@ if [ -n "$KEY_NAME" ] && [ -f "${SCRIPT_DIR}/${KEY_NAME}.pem" ]; then
 fi
 
 # Update kubeconfig with new master IP
+echo "Updating kubeconfig with new master IP..."
+mkdir -p ~/.kube
+scp -o StrictHostKeyChecking=no -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP:~/.kube/config ~/.kube/config-retail-store 2>/dev/null
+
 if [ -f ~/.kube/config-retail-store ]; then
-    echo "Updating kubeconfig with new master IP..."
-    scp -o StrictHostKeyChecking=no -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP:~/.kube/config ~/.kube/config-retail-store 2>/dev/null
     sed -i "s|server: https://.*:6443|server: https://${MASTER_PUBLIC_IP}:6443|g" ~/.kube/config-retail-store
-    # Set TLS skip (add this line)
-    kubectl --kubeconfig=~/.kube/config-retail-store config set-cluster kubernetes --insecure-skip-tls-verify=true 2>/dev/null
+    # Remove certificate-authority-data and add insecure-skip-tls-verify (sed is more reliable than kubectl)
+    sed -i '/certificate-authority-data:/d' ~/.kube/config-retail-store
+    sed -i '/server: https/i\    insecure-skip-tls-verify: true' ~/.kube/config-retail-store
     echo "✓ Kubeconfig updated"
+    echo "⚠ Failed to copy kubeconfig from master"
 fi
 
 # Update ArgoCD URL with new master IP

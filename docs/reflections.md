@@ -38,6 +38,35 @@ Lesson learned: when something times out, **check resources first** before addin
 
 ---
 
+### 💀 The Great Snapshot Catastrophe of November 24th 2025 💀
+
+So there I was, 1 AM, project **DONE**, feeling great... and then:
+
+1. Tried to create a "victory snapshot" 🎉
+2. VirtualBox crashed - host disk full 😵
+3. Panicked and deleted old snapshot files manually
+4. Broke the entire VirtualBox disk chain - ubuntu won't boot 💀
+5. Computer kept restarting because - ***my cat was sitting on the power button!*** 😸🤯🤦‍♀️
+6. Ran Recuva & many other softwares at 2 AM hoping for data recovery - no luck 😫
+7. Spend the next 2 days attempting to restore what I can from the remaining snapshots 😵
+8. Eventually Re-installed a new Ubuntu: 😔
+   * Reinstalled AWS CLI, git & gitcli, helm, kubectl, and everything else needed...
+   * Reconfigured AWS CLI, Git SSH cli, kubectl access and everything else needed...
+   * created a new keypair for EC2 and manually added it to the EC2 instances
+   * Cloned this repo - Thank God I pushed it a few minutes before the crash 🤗
+   * Had to recreate local file - deployment-info.txt - too many missing variables had to be recovered 🪫
+   * Had to restore and reconfigure kubectl as well. 😞
+
+**Lessons learned:** 💡
+- Always check host disk space BEFORE snapshots 🧐
+- VirtualBox snapshots are a CHAIN - don't delete middle links! 🤦‍♀️
+- Keep cats away from computers during critical operations 😸
+- SSD hard drive is unrecoverable... 😖
+- ***Creating scripts is a HUGE time saver when having to restore everything!*** 📝🤓
+- I learned a lot of snapshots manipulation tricks, I created a partial chain of the most current snapshots, separated them from the missing links, and attached them to the base, & attached them to my new VM using USB to try and recover as many files as I can... 🛠️💡🧩
+
+---
+
 ## GitOps Implementation Experience 🚀
 
 The workflow clicked once I understood it:
