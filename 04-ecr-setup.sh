@@ -240,42 +240,51 @@ create_image_pull_secret() {
     fi
     print_success "ECR credentials retrieved"
 
-    # Check if secret already exists
-    print_info "Checking if imagePullSecret 'regcred' exists..."
-    SECRET_EXISTS=$(ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP \
-        "kubectl get secret regcred 2>/dev/null | wc -l" || echo "0")
+    # Namespaces that need the regcred secret
+    NAMESPACES=("default" "retail-store")
 
-    if [ "$SECRET_EXISTS" -gt "0" ]; then
-        print_warning "Secret 'regcred' already exists. Deleting old secret..."
+    for NS in "${NAMESPACES[@]}"; do
+        print_info "Processing namespace: ${NS}"
+
+        # Ensure namespace exists (retail-store might not exist on first run)
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP \
+            "kubectl create namespace ${NS} 2>/dev/null || true"
+
+        # Delete old secret if exists
+        ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP \
+            "kubectl delete secret regcred -n ${NS} 2>/dev/null || true"
+
+        # Create new secret
+        print_info "Creating regcred in namespace: ${NS}..."
         ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
-            kubectl delete secret regcred 2>/dev/null || true
+            kubectl create secret docker-registry regcred \
+                --docker-server=${ECR_REGISTRY} \
+                --docker-username=AWS \
+                --docker-password='${ECR_PASSWORD}' \
+                --docker-email=none@example.com \
+                --namespace=${NS}
 EOF
-        print_success "Old secret deleted"
-    fi
+        print_success "regcred created in ${NS}"
+    done
 
-    print_info "Creating new imagePullSecret 'regcred'..."
-
-    # Create the secret on the cluster
-    ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << EOF
-        kubectl create secret docker-registry regcred \
-            --docker-server=${ECR_REGISTRY} \
-            --docker-username=AWS \
-            --docker-password='${ECR_PASSWORD}' \
-            --docker-email=none@example.com
-EOF
-
-    print_success "imagePullSecret 'regcred' created successfully"
-
-    # Verify secret creation
-    print_info "Verifying secret..."
+    # Verify secrets
+    print_info "Verifying secrets..."
     ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP << 'EOF'
-        echo "Secret details:"
-        kubectl get secret regcred
         echo ""
-        echo "✓ Secret is ready for use by Helm charts"
+        echo "Secrets in default namespace:"
+        kubectl get secret regcred -n default
+        echo ""
+        echo "Secrets in retail-store namespace:"
+        kubectl get secret regcred -n retail-store 2>/dev/null || echo "  (namespace not yet created)"
+        echo ""
 EOF
 
-    print_success "Secret verification complete"
+    # Restart deployments in retail-store namespace to pick up new credentials
+    print_info "Restarting deployments in retail-store namespace..."
+    ssh -o StrictHostKeyChecking=no -i "$KEY_FILE" ubuntu@$MASTER_PUBLIC_IP \
+        "kubectl rollout restart deployment -n retail-store 2>/dev/null || true"
+
+    print_success "imagePullSecret created/refreshed in all namespaces"
 }
 
 # Update deployment-info.txt

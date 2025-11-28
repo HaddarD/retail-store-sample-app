@@ -9,6 +9,7 @@ A microservices e-commerce application deployed on a self-managed Kubernetes clu
 - 📦 **AWS ECR** for private container registry
 - 🔄 **GitHub Actions CI/CD** pipeline
 - 🚀 **ArgoCD GitOps** for automated deployments
+- 🏭 **Terraform** for ECR infrastructure provisioning
 - 📊 **Infrastructure as Code** with automated bash scripts
 
 ## Architecture
@@ -31,9 +32,10 @@ A microservices e-commerce application deployed on a self-managed Kubernetes clu
 │   │               DynamoDB (AWS)                             │  │
 │   └─────────────────────────────────────────────────────────┘  │
 │                                                                  │
-│   ┌──────────┐              ┌──────────┐                       │
-│   │   ECR    │              │  ArgoCD  │                       │
-│   └──────────┘              └──────────┘                       │
+│   ┌──────────┐    ┌──────────┐    ┌──────────┐                 │
+│   │   ECR    │    │  ArgoCD  │    │Terraform │                 │
+│   │(registry)│    │ (GitOps) │    │  (IaC)   │                 │
+│   └──────────┘    └──────────┘    └──────────┘                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,24 +60,30 @@ cd retail-store-sample-app
 # 3. Initialize Kubernetes cluster
 ./02-k8s-init.sh
 
-# 4. Setup ECR repositories and credentials
-./03-ecr-setup.sh
+# 4. Install Terraform (one time)
+./03-Install-terraform.sh
 
-# 5. Create DynamoDB table for Cart service
+# 5. Setup ECR repositories (Terraform) and credentials
+./04-ecr-setup.sh
+
+# 6. Create DynamoDB table for Cart service
 ./05-dynamodb-setup.sh
 
-# 6. (Option A) Deploy with Helm only
-./06-helm-deploy.sh
+# 7. Install Helm locally
+./06-install-helm-local.sh
 
-# 6. (Option B) Deploy with GitOps/ArgoCD
-./07-create-gitops-repo.sh
+# 8. (Option A) Deploy with Helm only
+./07-helm-deploy.sh
+
+# 8. (Option B) Deploy with GitOps/ArgoCD
+./08-create-gitops-repo.sh
 # Add GITOPS_PAT secret to GitHub repository settings
-./08-argocd-setup.sh
+./09-argocd-setup.sh
 ```
 
 ### Daily Startup
 ```bash
-./startup.sh && source deployment-info.txt && ./03-ecr-setup.sh
+./startup.sh && source restore-vars.sh && ./04-ecr-setup.sh
 ```
 
 ### Access the Application
@@ -102,6 +110,13 @@ retail-store-sample-app/
 ├── .github/workflows/            # CI/CD pipeline
 │   └── build-and-deploy.yml
 │
+├── terraform/                    # Infrastructure as Code
+│   └── ecr/                      # ECR repository definitions
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── outputs.tf
+│       └── terraform.tfvars
+│
 ├── helm-chart/                   # Kubernetes Helm chart
 │
 ├── docs/                         # Documentation
@@ -111,11 +126,13 @@ retail-store-sample-app/
 │
 ├── 01-infrastructure.sh          # Create AWS resources
 ├── 02-k8s-init.sh                # Initialize K8s cluster
-├── 03-ecr-setup.sh               # Setup ECR + credentials
+├── 03-Install-terraform.sh       # Install Terraform
+├── 04-ecr-setup.sh               # Setup ECR (Terraform) + credentials
 ├── 05-dynamodb-setup.sh          # Create DynamoDB table
-├── 06-helm-deploy.sh             # Deploy with Helm
-├── 07-create-gitops-repo.sh      # Create GitOps repository
-├── 08-argocd-setup.sh            # Install ArgoCD
+├── 06-install-helm-local.sh      # Install Helm locally
+├── 07-helm-deploy.sh             # Deploy with Helm
+├── 08-create-gitops-repo.sh      # Create GitOps repository
+├── 09-argocd-setup.sh            # Install ArgoCD
 ├── startup.sh                    # Daily startup script
 ├── 99-cleanup.sh                 # Delete all resources
 │
@@ -130,11 +147,13 @@ retail-store-sample-app/
 |--------|---------|---------------|
 | `01-infrastructure.sh` | Create EC2, security groups, IAM | Once |
 | `02-k8s-init.sh` | Initialize Kubernetes cluster | Once |
-| `03-ecr-setup.sh` | Setup ECR + refresh credentials | Every session |
+| `03-Install-terraform.sh` | Install Terraform locally | Once |
+| `04-ecr-setup.sh` | Setup ECR (Terraform) + refresh credentials | Once + Every session |
 | `05-dynamodb-setup.sh` | Create DynamoDB table | Once |
-| `06-helm-deploy.sh` | Deploy app with Helm | Once (if not using ArgoCD) |
-| `07-create-gitops-repo.sh` | Create GitOps repository | Once |
-| `08-argocd-setup.sh` | Install and configure ArgoCD | Once |
+| `06-install-helm-local.sh` | Install Helm locally | Once |
+| `07-helm-deploy.sh` | Deploy app with Helm | Once (if not using ArgoCD) |
+| `08-create-gitops-repo.sh` | Create GitOps repository | Once |
+| `09-argocd-setup.sh` | Install and configure ArgoCD | Once |
 | `startup.sh` | Start EC2s, update IPs | Every session |
 | `99-cleanup.sh` | Delete ALL resources | End of project |
 
@@ -167,6 +186,9 @@ kubectl rollout restart deployment -n retail-store
 
 # SSH to master node
 ssh -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP
+
+# Check Terraform state
+cd terraform/ecr && terraform show
 ```
 
 ## Troubleshooting
@@ -174,14 +196,14 @@ ssh -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP
 ### Pods stuck in ImagePullBackOff
 ECR credentials expired or missing. Run:
 ```bash
-./03-ecr-setup.sh
-kubectl rollout restart deployment -n retail-store
+./04-ecr-setup.sh
 ```
+*(Script automatically refreshes credentials and restarts deployments)*
 
 ### Cannot connect to cluster
 EC2 instances stopped or IPs changed. Run:
 ```bash
-./startup.sh && source deployment-info.txt
+./startup.sh && source restore-vars.sh
 ```
 
 ### 503 Service Unavailable
@@ -196,6 +218,13 @@ Requires 20GB disk space. Check with:
 ssh -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP "df -h /"
 ```
 
+### Terraform errors
+Terraform not installed or initialized:
+```bash
+./03-Install-terraform.sh
+cd terraform/ecr && terraform init
+```
+
 ## Cleanup
 
 **⚠️ This deletes ALL resources and cannot be undone!**
@@ -208,6 +237,7 @@ ssh -i $KEY_FILE ubuntu@$MASTER_PUBLIC_IP "df -h /"
 | Category | Technology |
 |----------|------------|
 | Cloud | AWS (EC2, ECR, DynamoDB) |
+| IaC | Terraform (ECR provisioning) |
 | Container Runtime | containerd |
 | Kubernetes | kubeadm 1.28 |
 | CNI | Calico |

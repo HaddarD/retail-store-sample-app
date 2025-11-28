@@ -49,6 +49,13 @@ retail-store-sample-app/
 │   └── workflows/
 │       └── build-and-deploy.yml      # GitHub Actions workflow
 │
+├── terraform/                        # 🏗️ Infrastructure as Code
+│   └── ecr/                          # ECR Repository Definitions
+│       ├── main.tf                   # 5 ECR repositories
+│       ├── variables.tf              # Configuration variables
+│       ├── outputs.tf                # Repository URLs output
+│       └── terraform.tfvars          # Environment values
+│
 ├── helm-chart/                       # 📋 Original Helm Chart (Phase 4)
 │   ├── Chart.yaml
 │   ├── values.yaml
@@ -56,21 +63,24 @@ retail-store-sample-app/
 │
 ├── docs/                             # 📚 Documentation
 │   ├── environment-configurations.md
-│   └── repository-structure-and-deployment-flow.md
+│   ├── repository-structure-and-deployment-flow.md
+│   └── reflections.md
 │
 ├── ─────────────────────────────────  # 🛠️ Infrastructure Scripts
-├── 01-infrastructure.sh              # Create AWS resources
+├── 01-infrastructure.sh              # Create AWS resources (EC2, SG, IAM)
 ├── 02-k8s-init.sh                    # Initialize Kubernetes cluster
-├── 03-ecr-setup.sh                   # Setup ECR + imagePullSecret
+├── 03-Install-terraform.sh           # Install Terraform locally
+├── 04-ecr-setup.sh                   # Setup ECR (Terraform) + imagePullSecret
 ├── 05-dynamodb-setup.sh              # Create DynamoDB table
-├── 06-helm-deploy.sh                 # Deploy with Helm (pre-ArgoCD)
-├── 07-create-gitops-repo.sh          # Create GitOps repository
-├── 08-argocd-setup.sh                # Install and configure ArgoCD
+├── 06-install-helm-local.sh          # Install Helm locally
+├── 07-helm-deploy.sh                 # Deploy with Helm (pre-ArgoCD)
+├── 08-create-gitops-repo.sh          # Create GitOps repository
+├── 09-argocd-setup.sh                # Install and configure ArgoCD
 │
 ├── ─────────────────────────────────  # 🔧 Utility Scripts
 ├── startup.sh                        # Start EC2s, update IPs
 ├── restore-vars.sh                   # Restore environment variables
-├── install-helm-local.sh             # Install Helm locally
+├── Display-App-URLs.sh               # Show application URLs
 ├── 99-cleanup.sh                     # Delete all resources
 │
 ├── ─────────────────────────────────  # 📄 Generated Files
@@ -89,6 +99,7 @@ retail-store-sample-app/
 |----------------|---------|
 | `src/` | Microservices source code |
 | `.github/workflows/` | CI/CD pipeline definitions |
+| `terraform/ecr/` | Terraform IaC for ECR repositories |
 | `*.sh` scripts | Infrastructure automation |
 | `helm-chart/` | Original Helm chart (used before ArgoCD) |
 | `docs/` | Project documentation |
@@ -99,77 +110,59 @@ retail-store-sample-app/
 
 **URL:** `https://github.com/<username>/retail-store-gitops`
 
-**Purpose:** Single source of truth for Kubernetes deployments. ArgoCD watches this repository.
+**Purpose:** Single source of truth for Kubernetes deployments.
 
 ### Structure:
 ```
 retail-store-gitops/
 │
-├── apps/                             # 📦 Application Helm Charts
-│   │
-│   ├── ui/                           # UI Service
-│   │   ├── Chart.yaml                # Helm chart metadata
-│   │   ├── values.yaml               # Configuration values
-│   │   └── templates/                # Kubernetes manifests
+├── apps/                             # 📦 Helm Charts per Service
+│   ├── ui/
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml               # ← Image tags updated by CI/CD
+│   │   └── templates/
 │   │       ├── deployment.yaml
 │   │       ├── service.yaml
-│   │       └── ingress.yaml
+│   │       └── _helpers.tpl
 │   │
-│   ├── catalog/                      # Catalog Service
+│   ├── catalog/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       └── service.yaml
 │   │
-│   ├── cart/                         # Cart Service
+│   ├── cart/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       └── service.yaml
 │   │
-│   ├── orders/                       # Orders Service
+│   ├── orders/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       └── service.yaml
 │   │
-│   ├── checkout/                     # Checkout Service
+│   ├── checkout/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   └── templates/
-│   │       ├── deployment.yaml
-│   │       └── service.yaml
 │   │
-│   └── dependencies/                 # Infrastructure Dependencies
+│   └── dependencies/                 # PostgreSQL, Redis, RabbitMQ
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
-│           ├── postgresql.yaml       # PostgreSQL database
-│           ├── redis.yaml            # Redis cache
-│           └── rabbitmq.yaml         # RabbitMQ message broker
 │
-└── argocd/                           # 🔄 ArgoCD Configuration
-    └── applications/                 # Application manifests
-        ├── application-ui.yaml
-        ├── application-catalog.yaml
-        ├── application-cart.yaml
-        ├── application-orders.yaml
-        ├── application-checkout.yaml
-        └── application-dependencies.yaml
+├── argocd/                           # 🚀 ArgoCD Application Definitions
+│   └── applications/
+│       ├── application-ui.yaml
+│       ├── application-catalog.yaml
+│       ├── application-cart.yaml
+│       ├── application-orders.yaml
+│       ├── application-checkout.yaml
+│       └── application-dependencies.yaml
+│
+└── README.md
 ```
 
-### Key Components:
-
-| Directory | Purpose |
-|-----------|---------|
-| `apps/` | Helm charts for each microservice |
-| `apps/dependencies/` | Database and messaging infrastructure |
-| `argocd/applications/` | ArgoCD Application CRDs |
-
-### values.yaml Structure:
+### How Values Files Work:
 
 Each service's `values.yaml` contains:
 ```yaml
@@ -237,215 +230,93 @@ env:
          │                       tags in                            │
          │                       values.yaml                        │
          │                           │                              │
-         │                    7. Commit & Push                      │
-         │                       to GitOps repo                     │
+         │                    7. Push to GitOps                     │
+         │                       Repository                         │
          │                           │                              │
          │                           │                              │
-         │                    ┌──────┴──────┐                       │
-         │                    │   ArgoCD    │                       │
-         │                    │  (watching) │                       │
-         │                    └──────┬──────┘                       │
+         │                           │      8. ArgoCD detects       │
+         │                           │         changes              │
          │                           │                              │
-         │                    8. Detect                             │
-         │                       Changes                            │
+         │                           │                              │
+         │                           │◀─────────────────────────────┤
+         │                           │      9. ArgoCD syncs         │
+         │                           │         to cluster           │
+         │                           │                              │
          │                           │                              │
          │                           ├─────────────────────────────▶│
-         │                           │     9. Sync to Cluster       │
+         │                           │     10. New pods             │
+         │                           │         deployed             │
          │                           │                              │
-         │                           │                       10. Pull new
-         │                           │                           images
-         │                           │                           from ECR
          │                           │                              │
-         │                           │                       11. Deploy
-         │                           │                           new pods
+    11. User sees                    │                              │
+        updated app                  │                              │
          │                           │                              │
-         │◀──────────────────────────┼──────────────────────────────│
-         │              12. Application Updated                     │
-         │                                                          │
 ```
 
 ### Step-by-Step Breakdown:
 
-| Step | Component | Action | Details |
-|------|-----------|--------|---------|
-| 1 | Developer | Push code | `git push origin main` |
-| 2 | GitHub | Trigger workflow | `on: push: branches: [main]` |
-| 3 | GitHub Actions | Build images | `docker build` for each service |
-| 4 | GitHub Actions | Push to ECR | `docker push` with commit SHA tag |
-| 5 | GitHub Actions | Clone GitOps repo | Using `GITOPS_PAT` secret |
-| 6 | GitHub Actions | Update values | `sed -i` to update image tags |
-| 7 | GitHub Actions | Push changes | Commit and push to GitOps repo |
-| 8 | ArgoCD | Detect changes | Polls GitOps repo every 3 minutes |
-| 9 | ArgoCD | Sync to cluster | Apply Helm charts to Kubernetes |
-| 10 | Kubernetes | Pull images | Using `regcred` imagePullSecret |
-| 11 | Kubernetes | Deploy pods | Rolling update of deployments |
-| 12 | Application | Updated | New version running |
+1. **Developer pushes code** to `retail-store-sample-app` repository
+2. **GitHub Actions workflow** is triggered by push to `main` branch
+3. **Docker images are built** for each changed microservice
+4. **Images are pushed to ECR** (created via Terraform)
+5. **GitHub Actions clones** the GitOps repository
+6. **Image tags are updated** in the appropriate `values.yaml` files
+7. **Changes are committed and pushed** to the GitOps repository
+8. **ArgoCD detects** the change in the GitOps repository
+9. **ArgoCD syncs** the new configuration to the Kubernetes cluster
+10. **New pods are deployed** with the updated images
+11. **User sees the updated application**
 
 ---
 
-## GitHub Actions Workflow Details
+## Infrastructure Provisioning
 
-### Workflow File: `.github/workflows/build-and-deploy.yml`
-```yaml
-name: Build and Deploy to ECR
+### Terraform for ECR (Phase 3)
 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:  # Manual trigger
-
-jobs:
-  # Job 1: Detect what to build
-  detect-changes:
-    name: Detect Changed Services
-    # Sets all services to build (project requirement)
-    
-  # Jobs 2-6: Build each service
-  build-ui:
-    needs: detect-changes
-    # Build and push UI image
-    
-  build-catalog:
-    needs: detect-changes
-    # Build and push Catalog image
-    
-  # ... (cart, orders, checkout)
-  
-  # Job 7: Update GitOps repository
-  update-gitops:
-    needs: [build-ui, build-catalog, build-cart, build-orders, build-checkout]
-    steps:
-      - Checkout GitOps repo
-      - Update image tags in values.yaml
-      - Commit and push
-      
-  # Job 8: Summary
-  build-summary:
-    # Print build results
+ECR repositories are created using Terraform for Infrastructure as Code:
+```
+terraform/ecr/
+├── main.tf           # Defines 5 ECR repositories
+├── variables.tf      # Input variables (region, naming)
+├── outputs.tf        # Outputs repository URLs
+└── terraform.tfvars  # Your environment values
 ```
 
-### Image Tagging Strategy:
+**What Terraform Creates:**
+- `retail-store-ui` repository
+- `retail-store-catalog` repository
+- `retail-store-cart` repository
+- `retail-store-orders` repository
+- `retail-store-checkout` repository
 
-| Tag | Purpose | Example |
-|-----|---------|---------|
-| Commit SHA | Traceability | `c4ec36469ad95d3eee5a3999108f4839f84d8108` |
-| `latest` | Quick reference | Points to most recent build |
+**Features:**
+- Image scanning on push (security)
+- AES256 encryption
+- Lifecycle policies (auto-cleanup old images)
+- Proper tagging for management
 
----
+**Usage:**
+```bash
+# First time: Creates ECR repos with Terraform + imagePullSecret
+./04-ecr-setup.sh
 
-## ArgoCD Configuration
-
-### Application Definition:
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: retail-store-ui
-  namespace: argocd
-spec:
-  project: default
-  
-  source:
-    repoURL: https://github.com/USER/retail-store-gitops.git
-    targetRevision: main
-    path: apps/ui
-    helm:
-      valueFiles:
-        - values.yaml
-        
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: retail-store
-    
-  syncPolicy:
-    automated:
-      prune: true       # Delete resources removed from Git
-      selfHeal: true    # Revert manual changes
-    syncOptions:
-      - CreateNamespace=true
+# Subsequent runs: Only refreshes imagePullSecret (12-hour token)
+./04-ecr-setup.sh
 ```
-
-### Sync Behavior:
-
-| Setting | Value | Effect |
-|---------|-------|--------|
-| `automated` | enabled | Auto-sync on Git changes |
-| `prune` | true | Remove deleted resources |
-| `selfHeal` | true | Revert manual cluster changes |
-| `CreateNamespace` | true | Create namespace if missing |
-
----
-
-## Network Flow
-
-### Request Path:
-```
-┌──────────┐     ┌─────────────┐     ┌──────────────────────────────────────┐
-│  User    │────▶│   Ingress   │────▶│           Kubernetes Cluster         │
-│ Browser  │     │   :30080    │     │                                      │
-└──────────┘     └─────────────┘     │  ┌────┐                              │
-                                      │  │ UI │◀───────────────────┐        │
-                                      │  └──┬─┘                    │        │
-                                      │     │                      │        │
-                                      │  ┌──▼──────┐  ┌──────┐  ┌──┴─────┐ │
-                                      │  │ Catalog │  │ Cart │  │Checkout│ │
-                                      │  └────┬────┘  └──┬───┘  └───┬────┘ │
-                                      │       │         │          │       │
-                                      │  ┌────▼────┐ ┌──▼───┐ ┌────▼────┐ │
-                                      │  │PostgreSQL│ │Redis │ │RabbitMQ │ │
-                                      │  └─────────┘ │+Dynamo│ └────┬────┘ │
-                                      │              └───────┘      │      │
-                                      │                        ┌────▼────┐ │
-                                      │                        │ Orders  │ │
-                                      │                        └─────────┘ │
-                                      └──────────────────────────────────────┘
-```
-
----
-
-## Access Points
-
-| Resource | URL | Port |
-|----------|-----|------|
-| Retail Store App | `http://MASTER_IP:30080` | 30080 |
-| ArgoCD UI | `https://MASTER_IP:30090` | 30090 |
-| Kubernetes API | `https://MASTER_IP:6443` | 6443 |
-
----
-
-## Secrets Management
-
-### GitHub Repository Secrets:
-
-| Secret | Purpose | Used By |
-|--------|---------|---------|
-| `AWS_ACCESS_KEY_ID` | AWS authentication | GitHub Actions |
-| `AWS_SECRET_ACCESS_KEY` | AWS authentication | GitHub Actions |
-| `AWS_REGION` | ECR region | GitHub Actions |
-| `AWS_ACCOUNT_ID` | ECR registry URL | GitHub Actions |
-| `GITOPS_PAT` | Push to GitOps repo | GitHub Actions |
-
-### Kubernetes Secrets:
-
-| Secret | Namespace | Purpose |
-|--------|-----------|---------|
-| `regcred` | retail-store | ECR image pull credentials |
-| `argocd-initial-admin-secret` | argocd | ArgoCD admin password |
 
 ---
 
 ## Rollback Procedure
 
-### Option 1: Git Revert (Recommended)
+### Option 1: Git Revert
 ```bash
 # In GitOps repository
 git revert HEAD
-git push origin main
-# ArgoCD auto-syncs to previous state
+git push
+# ArgoCD auto-syncs to previous version
 ```
 
 ### Option 2: ArgoCD UI
-
 1. Open ArgoCD UI
 2. Select application
 3. Click "History and Rollback"
@@ -503,6 +374,7 @@ rabbitmq-xxxxx                1/1     Running   0          5m
 |--------|----------------|
 | Source Code | Application Repository |
 | Configurations | GitOps Repository |
+| IaC (ECR) | Terraform |
 | CI | GitHub Actions |
 | CD | ArgoCD |
 | Container Registry | AWS ECR |
