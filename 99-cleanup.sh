@@ -344,13 +344,36 @@ cleanup_ssh_key() {
 }
 
 ################################################################################
-# Step 8: ECR Repositories
+# Step 8: ECR Repositories (Terraform)
 ################################################################################
 cleanup_ecr() {
     print_header "Step 8: Deleting ECR Repositories"
 
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    TERRAFORM_DIR="${SCRIPT_DIR}/terraform/ecr"
+
     REPOS=("retail-store-ui" "retail-store-catalog" "retail-store-cart" "retail-store-orders" "retail-store-checkout")
 
+    # Try Terraform first if state exists
+    if [ -d "$TERRAFORM_DIR" ] && [ -f "$TERRAFORM_DIR/terraform.tfstate" ]; then
+        print_info "Found Terraform state - using terraform destroy..."
+
+        cd "$TERRAFORM_DIR"
+        terraform init -input=false > /dev/null 2>&1
+
+        if terraform destroy -auto-approve -input=false; then
+            print_success "ECR repositories destroyed via Terraform"
+            cd "$SCRIPT_DIR"
+            return
+        else
+            print_warning "Terraform destroy failed - falling back to AWS CLI"
+            cd "$SCRIPT_DIR"
+        fi
+    else
+        print_info "No Terraform state found - using AWS CLI"
+    fi
+
+    # Fallback: AWS CLI
     for repo in "${REPOS[@]}"; do
         if aws ecr describe-repositories --repository-names "$repo" --region "$REGION" &>/dev/null; then
             print_info "Deleting ECR repository: ${repo}..."
@@ -452,12 +475,14 @@ echo ""
 echo -e "${BLUE}To recreate the project from scratch, run:${NC}"
 echo "  1. ./01-infrastructure.sh"
 echo "  2. ./02-k8s-init.sh"
-echo "  3. ./03-ecr-setup.sh"
-echo "  4. ./05-dynamodb-setup.sh"
-echo "  5. ./06-helm-deploy.sh      # For Helm-only deployment"
+echo "  3. ./ 03-Install-terraform.sh"
+echo "  4. ./04-ecr-setup.sh"
+echo "  5. ./05-dynamodb-setup.sh"
+echo "  6. ./ 06-install-helm-local.sh"
+echo "  7. ./07-helm-deploy.sh      # For Helm-only deployment"
 echo "  OR"
-echo "  5. ./07-create-gitops-repo.sh  # For GitOps deployment"
-echo "  6. ./08-argocd-setup.sh"
+echo "  8. ./08-create-gitops-repo.sh  # For GitOps deployment"
+echo "  9. ./09-argocd-setup.sh"
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          Cleanup Completed Successfully! 🧹            ║${NC}"
